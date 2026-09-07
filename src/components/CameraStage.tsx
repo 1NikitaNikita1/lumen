@@ -26,7 +26,7 @@ export default function CameraStage() {
     const { width, height } = useViewportSize();
     const [video, setVideo] = useState<HTMLVideoElement | null>(null);
     const [fingerConfigs, setFingerConfigs] = useState<FingerConfigs>(DEFAULT_FINGER_CONFIGS);
-    const [mode, setMode] = useState<StageMode>('draw');
+    const [mode, setMode] = useState<StageMode>('track');
 
     const [lines, setLines] = useState<DrawnLine[]>([]);
 
@@ -56,7 +56,6 @@ export default function CameraStage() {
 
     const handleTogglePlay = useCallback(() => {
         audioEngine.init();
-
         setIsPlaying((p) => !p);
     }, []);
 
