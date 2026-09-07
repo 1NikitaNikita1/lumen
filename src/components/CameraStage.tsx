@@ -15,6 +15,7 @@ import { COLOR_NOTES, frequencyForCrossing } from '../audio/noteMapping';
 import { audioEngine } from '../audio/AudioEngine';
 import { useViewportSize } from '../hooks/useViewportSize';
 import TargetTracker from './TargetTracker';
+import FingerControls, { type FingerConfigs, DEFAULT_FINGER_CONFIGS } from './FingerControls';
 
 const DEFAULT_SPEED = 160;
 const DEFAULT_VOLUME = 0.7;
@@ -24,7 +25,7 @@ type StageMode = 'draw' | 'motion' | 'track';
 export default function CameraStage() {
     const { width, height } = useViewportSize();
     const [video, setVideo] = useState<HTMLVideoElement | null>(null);
-
+    const [fingerConfigs, setFingerConfigs] = useState<FingerConfigs>(DEFAULT_FINGER_CONFIGS);
     const [mode, setMode] = useState<StageMode>('draw');
 
     const [lines, setLines] = useState<DrawnLine[]>([]);
@@ -93,7 +94,10 @@ export default function CameraStage() {
                     />
                 </>
             ) : mode === 'track' ? (
-                <TargetTracker width={width} height={height} enabled={true} />
+                <>
+                    <FingerControls value={fingerConfigs} onChange={setFingerConfigs} />
+                    <TargetTracker width={width} height={height} enabled={true} fingerConfigs={fingerConfigs} />
+                </>
             ) : (
                 <MotionTracker video={video} width={width} height={height} enabled={isPlaying} />
             )}
