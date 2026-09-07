@@ -74,7 +74,7 @@ export default function CameraStage() {
 
     return (
         <div className='stage'>
-            <CameraBackground />
+            <CameraBackground onVideoReady={setVideo} />
 
             {mode === 'draw' ? (
                 <>
