@@ -1,46 +1,46 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useEffect, useRef, useState } from 'react';
 
 type Props = {
     onReady?: () => void;
+    onVideoReady?: (video: HTMLVideoElement) => void;
 };
 
 type CameraState = 'requesting' | 'ready' | 'denied' | 'unsupported' | 'error';
 
-const CameraBackground = forwardRef<HTMLVideoElement, Props>(({ onReady }, ref) => {
+const CameraBackground = forwardRef<HTMLVideoElement, Props>(({ onReady, onVideoReady }, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null);
-    const streamRef = useRef<MediaStream | null>(null);
 
     const [state, setState] = useState<CameraState>('requesting');
+
     const [errorMessage, setErrorMessage] = useState('');
 
-    useImperativeHandle(ref, () => videoRef.current as HTMLVideoElement);
-
     useEffect(() => {
+        let stream: MediaStream | null = null;
         let cancelled = false;
 
-        const startCamera = async () => {
-            if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        async function start() {
+            if (!navigator.mediaDevices?.getUserMedia) {
                 setState('unsupported');
                 return;
             }
 
             try {
                 setState('requesting');
-                setErrorMessage('');
 
-                const stream = await navigator.mediaDevices.getUserMedia({
+                stream = await navigator.mediaDevices.getUserMedia({
                     video: {
-                        facingMode: { ideal: 'user' }
+                        facingMode: {
+                            ideal: 'user'
+                        }
                     },
                     audio: false
                 });
 
                 if (cancelled) {
                     stream.getTracks().forEach((track) => track.stop());
+
                     return;
                 }
-
-                streamRef.current = stream;
 
                 const video = videoRef.current;
 
@@ -54,71 +54,54 @@ const CameraBackground = forwardRef<HTMLVideoElement, Props>(({ onReady }, ref) 
 
                 await video.play();
 
-                if (cancelled) {
-                    stream.getTracks().forEach((track) => track.stop());
-                    return;
+                onVideoReady?.(video);
+
+                if (typeof ref === 'object' && ref !== null) {
+                    ref.current = video;
                 }
 
                 setState('ready');
+
                 onReady?.();
             } catch (error) {
                 console.error('Camera error:', error);
 
                 if (error instanceof DOMException) {
                     console.error('Camera error name:', error.name);
+
                     console.error('Camera error message:', error.message);
 
-                    switch (error.name) {
-                        case 'NotAllowedError':
-                            setErrorMessage(
-                                'Camera permission was denied. Please allow camera access in your browser settings.'
-                            );
-                            break;
-
-                        case 'NotFoundError':
-                            setErrorMessage('No camera was found on this device.');
-                            break;
-
-                        case 'NotReadableError':
-                            setErrorMessage('Camera is already being used by another application.');
-                            break;
-
-                        case 'OverconstrainedError':
-                            setErrorMessage('The requested camera configuration is not supported.');
-                            break;
-
-                        case 'SecurityError':
-                            setErrorMessage('Camera access is blocked because of browser security settings.');
-                            break;
-
-                        default:
-                            setErrorMessage(error.message || 'Unable to access the camera.');
+                    if (error.name === 'NotAllowedError') {
+                        setErrorMessage(
+                            'Camera permission was denied. Please allow camera access in your browser settings.'
+                        );
+                    } else if (error.name === 'NotFoundError') {
+                        setErrorMessage('No camera was found on this device.');
+                    } else if (error.name === 'NotReadableError') {
+                        setErrorMessage('Camera is already being used by another application.');
+                    } else {
+                        setErrorMessage(error.message || 'Unable to access the camera.');
                     }
-                } else if (error instanceof Error) {
-                    setErrorMessage(error.message);
                 } else {
                     setErrorMessage('Unable to access the camera.');
                 }
 
                 setState('error');
             }
-        };
+        }
 
-        startCamera();
+        start();
 
         return () => {
             cancelled = true;
 
-            if (streamRef.current) {
-                streamRef.current.getTracks().forEach((track) => track.stop());
-                streamRef.current = null;
-            }
+            stream?.getTracks().forEach((track) => track.stop());
 
             if (videoRef.current) {
                 videoRef.current.srcObject = null;
             }
         };
-    }, [onReady]);
+    }, [onReady, onVideoReady, ref]);
 
     return (
         <div className='camera-layer'>
@@ -128,13 +111,9 @@ const CameraBackground = forwardRef<HTMLVideoElement, Props>(({ onReady }, ref) 
                 <div className='camera-fallback'>
                     {state === 'requesting' && <p>Requesting camera access…</p>}
 
-                    {state === 'denied' && <p>{errorMessage}</p>}
+                    {(state === 'denied' || state === 'error') && <p>{errorMessage}</p>}
 
-                    {state === 'error' && <p>{errorMessage}</p>}
-
-                    {state === 'unsupported' && (
-                        <p>This browser doesn't support camera access. Drawing and audio still work.</p>
-                    )}
+                    {state === 'unsupported' && <p>This browser doesn't support camera access.</p>}
                 </div>
             )}
         </div>
