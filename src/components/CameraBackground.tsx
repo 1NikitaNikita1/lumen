@@ -1,75 +1,146 @@
-import { forwardRef, useEffect, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 
 type Props = {
-  /** Reported once the stream is playing, so the app knows canvases can size themselves against it. */
-  onReady?: () => void;
+    onReady?: () => void;
 };
 
-type CameraState = "requesting" | "ready" | "denied" | "unsupported";
+type CameraState = 'requesting' | 'ready' | 'denied' | 'unsupported' | 'error';
 
 const CameraBackground = forwardRef<HTMLVideoElement, Props>(({ onReady }, ref) => {
-  const [state, setState] = useState<CameraState>("requesting");
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const streamRef = useRef<MediaStream | null>(null);
 
-  useEffect(() => {
-    let stream: MediaStream | null = null;
-    let cancelled = false;
+    const [state, setState] = useState<CameraState>('requesting');
+    const [errorMessage, setErrorMessage] = useState('');
 
-    async function start() {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setState("unsupported");
-        return;
-      }
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        const video = (ref as React.RefObject<HTMLVideoElement>).current;
-        if (video) {
-          video.srcObject = stream;
-          await video.play().catch(() => {});
-        }
-        setState("ready");
-        onReady?.();
-      } catch (err) {
-        setState("denied");
-      }
-    }
+    useImperativeHandle(ref, () => videoRef.current as HTMLVideoElement);
 
-    start();
+    useEffect(() => {
+        let cancelled = false;
 
-    return () => {
-      cancelled = true;
-      stream?.getTracks().forEach((t) => t.stop());
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+        const startCamera = async () => {
+            if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+                setState('unsupported');
+                return;
+            }
 
-  return (
-    <div className="camera-layer">
-      <video ref={ref} className="camera-video" playsInline muted autoPlay />
-      {state !== "ready" && (
-        <div className="camera-fallback">
-          {state === "requesting" && <p>Requesting camera access…</p>}
-          {state === "denied" && (
-            <p>
-              Camera access was denied. You can still draw and play notes — allow
-              camera permission in your browser settings to see the video feed.
-            </p>
-          )}
-          {state === "unsupported" && (
-            <p>This browser doesn't support camera access. Drawing and audio still work.</p>
-          )}
+            try {
+                setState('requesting');
+                setErrorMessage('');
+
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { ideal: 'user' }
+                    },
+                    audio: false
+                });
+
+                if (cancelled) {
+                    stream.getTracks().forEach((track) => track.stop());
+                    return;
+                }
+
+                streamRef.current = stream;
+
+                const video = videoRef.current;
+
+                if (!video) {
+                    throw new Error('Video element is not available');
+                }
+
+                video.srcObject = stream;
+                video.muted = true;
+                video.playsInline = true;
+
+                await video.play();
+
+                if (cancelled) {
+                    stream.getTracks().forEach((track) => track.stop());
+                    return;
+                }
+
+                setState('ready');
+                onReady?.();
+            } catch (error) {
+                console.error('Camera error:', error);
+
+                if (error instanceof DOMException) {
+                    console.error('Camera error name:', error.name);
+                    console.error('Camera error message:', error.message);
+
+                    switch (error.name) {
+                        case 'NotAllowedError':
+                            setErrorMessage(
+                                'Camera permission was denied. Please allow camera access in your browser settings.'
+                            );
+                            break;
+
+                        case 'NotFoundError':
+                            setErrorMessage('No camera was found on this device.');
+                            break;
+
+                        case 'NotReadableError':
+                            setErrorMessage('Camera is already being used by another application.');
+                            break;
+
+                        case 'OverconstrainedError':
+                            setErrorMessage('The requested camera configuration is not supported.');
+                            break;
+
+                        case 'SecurityError':
+                            setErrorMessage('Camera access is blocked because of browser security settings.');
+                            break;
+
+                        default:
+                            setErrorMessage(error.message || 'Unable to access the camera.');
+                    }
+                } else if (error instanceof Error) {
+                    setErrorMessage(error.message);
+                } else {
+                    setErrorMessage('Unable to access the camera.');
+                }
+
+                setState('error');
+            }
+        };
+
+        startCamera();
+
+        return () => {
+            cancelled = true;
+
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach((track) => track.stop());
+                streamRef.current = null;
+            }
+
+            if (videoRef.current) {
+                videoRef.current.srcObject = null;
+            }
+        };
+    }, [onReady]);
+
+    return (
+        <div className='camera-layer'>
+            <video ref={videoRef} className='camera-video' playsInline muted autoPlay />
+
+            {state !== 'ready' && (
+                <div className='camera-fallback'>
+                    {state === 'requesting' && <p>Requesting camera access…</p>}
+
+                    {state === 'denied' && <p>{errorMessage}</p>}
+
+                    {state === 'error' && <p>{errorMessage}</p>}
+
+                    {state === 'unsupported' && (
+                        <p>This browser doesn't support camera access. Drawing and audio still work.</p>
+                    )}
+                </div>
+            )}
         </div>
-      )}
-    </div>
-  );
+    );
 });
 
-CameraBackground.displayName = "CameraBackground";
+CameraBackground.displayName = 'CameraBackground';
 
 export default CameraBackground;
